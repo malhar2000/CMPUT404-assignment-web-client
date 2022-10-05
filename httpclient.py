@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # coding: utf-8
 # Copyright 2016 Abram Hindle, https://github.com/tywtyw2002, and https://github.com/treedust
-# 
+#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
-# 
+#
 #     http://www.apache.org/licenses/LICENSE-2.0
-# 
+#
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -24,30 +24,40 @@ import re
 # you may use urllib to encode data appropriately
 import urllib.parse
 
+
 def help():
     print("httpclient.py [GET/POST] [URL]\n")
+
 
 class HTTPResponse(object):
     def __init__(self, code=200, body=""):
         self.code = code
         self.body = body
 
+
 class HTTPClient(object):
-    #def get_host_port(self,url):
+    def get_host_port(self, url):
+         url = urllib.parse.urlparse(url)
+         port = url.port
+         if not port:
+            port = 80
+         self.connect(url.hostname, port)
+         return [url.path,  url.hostname]
+        
 
     def connect(self, host, port):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.connect((host, port))
-        return None
+        
 
     def get_code(self, data):
-        return None
+        return int(data.split( )[1])
 
     def get_headers(self,data):
-        return None
+        return data.split('\r\n\r\n')[0]
 
     def get_body(self, data):
-        return None
+        return data.split('\r\n\r\n')[1]
     
     def sendall(self, data):
         self.socket.sendall(data.encode('utf-8'))
@@ -70,11 +80,34 @@ class HTTPClient(object):
     def GET(self, url, args=None):
         code = 500
         body = ""
+        [path, hostname] = self.get_host_port(url)
+        if not path:
+            path = '/'
+        send_url = f'GET {path} HTTP/1.1\r\nHost:{hostname}\r\nConnection: close\r\n\r\n'
+        self.sendall(send_url)
+        data = self.recvall(self.socket) 
+        self.close()
+        code =  self.get_code(data)
+        body = self.get_body(data)
         return HTTPResponse(code, body)
 
     def POST(self, url, args=None):
         code = 500
         body = ""
+        [path, hostname] = self.get_host_port(url) 
+        #url encode data as field1=value1&field2=value2
+        args = f'{urllib.parse.urlencode(args) if args else " "}'
+        #encode data as  field1=value1&field2=value2 and then take its len becoz args before is a dict so its lenght will be 
+        #equal to number of key-value pairs in dict
+        # while after encoding the dict will become a long string
+        args_len = f'{len(args) if args else 0}'    
+        post_url = f'POST {path} HTTP/1.1\r\nHost:{hostname}\r\nContent-Type:application/x-www-form-urlencoded\r\nContent-Length:{args_len}\r\nnConnection: close\r\n\r\n{args}\r\n\r\n'
+        self.sendall(post_url)
+        data = self.recvall(self.socket)
+        self.close()
+        code = self.get_code(data)
+        body = self.get_body(data) 
+  
         return HTTPResponse(code, body)
 
     def command(self, url, command="GET", args=None):
